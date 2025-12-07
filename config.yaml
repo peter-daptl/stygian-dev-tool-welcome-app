@@ -340,7 +340,7 @@ categories:
         script: |
           echo "Installing MySQL Workbench (Note: Not officially supported on newer Ubuntu versions)"
           apt install -y libproj-dev libgdal-dev libmysqlclient21 || true
-          wget -O /tmp/mysql-workbench.deb https://dev.mysql.com/get/Downloads/MySQLGUITools/mysql-workbench-community_8.0.38-1ubuntu22.04_amd64.deb
+          wget -O /tmp/mysql-workbench.deb https://dev.mysql.com/get/Downloads/MySQLGUITools/mysql-workbench-community_8.0.45-1ubuntu24.04_amd64.deb
           apt install -y /tmp/mysql-workbench.deb || true
           rm -f /tmp/mysql-workbench.deb || true
 
