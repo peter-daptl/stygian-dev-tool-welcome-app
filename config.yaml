@@ -1,0 +1,493 @@
+app_name: "Welcome to Stygian OS"
+subtitle: "By Developers, For Developers"
+app_version: "1.0.3"
+
+categories:
+  - name: "Dev Tools & Editors"
+    description: "Essential tools for coding and source control."
+    options:
+      - id: "vscode"
+        label: "VS Code"
+        script: |
+          # Clean up any existing VS Code repository configurations
+          rm -f /etc/apt/sources.list.d/vscode.list
+          rm -f /usr/share/keyrings/microsoft.gpg
+          rm -f /usr/share/keyrings/packages.microsoft.gpg
+          wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/packages.microsoft.gpg
+          echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
+          apt update && apt install -y code
+
+      - id: "cursor"
+        label: "Cursor Editor"
+        script: |
+          # Run cursor agent install as user, not root
+          if [ -n "$SUDO_USER" ]; then
+            su - $SUDO_USER -c 'curl https://cursor.com/install -fsSL | bash' || true
+          fi
+          wget -O /tmp/cursor.deb https://api2.cursor.sh/updates/download/golden/linux-x64-deb/cursor/2.0
+          apt install -y /tmp/cursor.deb || true
+          rm -f /tmp/cursor.deb || true
+
+      - id: "git"
+        label: "Git + Git LFS"
+        script: |
+          apt install -y git git-lfs
+          git lfs install || true
+
+      - id: "build-essential"
+        label: "Build Essentials (GCC/Make)"
+        script: |
+          apt install -y build-essential
+
+      - id: "ripgrep"
+        label: "ripgrep (rg)"
+        script: |
+          apt install -y ripgrep
+
+      - id: "fzf"
+        label: "fzf (fuzzy finder)"
+        script: |
+          apt install -y fzf
+
+      - id: "brew"
+        label: "Homebrew (Linuxbrew)"
+        script: |
+          apt install -y build-essential procps curl file git
+          # Create all Homebrew directories as root (avoids sudo password prompts)
+          echo "Creating Homebrew directories..."
+          mkdir -p /home/linuxbrew/.linuxbrew/{bin,etc,include,lib,sbin,share,var,opt,Cellar,Caskroom,Frameworks}
+          mkdir -p /home/linuxbrew/.linuxbrew/share/zsh/site-functions
+          mkdir -p /home/linuxbrew/.linuxbrew/var/homebrew/linked
+          
+          if [ -n "$SUDO_USER" ]; then
+            # Set ownership to the user
+            chown -R $SUDO_USER:$(id -gn $SUDO_USER) /home/linuxbrew
+            
+            # Install as user with NONINTERACTIVE flag and CI=1 to skip some prompts
+            su - $SUDO_USER -c 'export NONINTERACTIVE=1 CI=1; /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' 2>&1 | grep -v "sudo" || echo "Note: Homebrew installation may have had warnings"
+            
+            # Add to user's profile (fix the line 28 error)
+            USER_HOME=$(eval echo ~$SUDO_USER)
+            
+            # Remove any broken homebrew lines first
+            if [ -f "$USER_HOME/.profile" ]; then
+              sed -i '/linuxbrew.*brew shellenv/d' "$USER_HOME/.profile"
+            fi
+            if [ -f "$USER_HOME/.bashrc" ]; then
+              sed -i '/linuxbrew.*brew shellenv/d' "$USER_HOME/.bashrc"
+            fi
+            
+            # Add working homebrew setup
+            if [ -f "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+              echo '# Homebrew' >> "$USER_HOME/.profile"
+              echo 'if [ -d "/home/linuxbrew/.linuxbrew" ]; then' >> "$USER_HOME/.profile"
+              echo '  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "$USER_HOME/.profile"
+              echo 'fi' >> "$USER_HOME/.profile"
+              
+              echo '# Homebrew' >> "$USER_HOME/.bashrc"
+              echo 'if [ -d "/home/linuxbrew/.linuxbrew" ]; then' >> "$USER_HOME/.bashrc"
+              echo '  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> "$USER_HOME/.bashrc"
+              echo 'fi' >> "$USER_HOME/.bashrc"
+              
+              echo "✓ Homebrew installed successfully"
+            else
+              echo "⚠ Homebrew directory structure created but installer may need manual completion"
+              echo "  To complete: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+            fi
+            
+            # Add to /etc/skel for future users
+            if ! grep -q 'linuxbrew' /etc/skel/.profile 2>/dev/null; then
+              echo '# Homebrew' >> /etc/skel/.profile
+              echo 'if [ -d "/home/linuxbrew/.linuxbrew" ]; then' >> /etc/skel/.profile
+              echo '  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /etc/skel/.profile
+              echo 'fi' >> /etc/skel/.profile
+            fi
+            
+            echo "Homebrew setup complete. Start a new shell to use: source ~/.profile"
+          else
+            echo "WARNING: Homebrew requires a non-root user. Directory created but not installed."
+            echo "After installation, run as your user: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+          fi
+
+  - name: "Containerization"
+    description: "Tools for working with containers (Docker)."
+    options:
+      - id: "docker-engine"
+        label: "Docker Engine & CLI"
+        script: |
+          # Clean up any existing Docker repository configurations
+          rm -f /etc/apt/sources.list.d/docker.list
+          rm -f /etc/apt/keyrings/docker.gpg
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          chmod a+r /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+          apt update
+          apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          usermod -aG docker $SUDO_USER || true
+
+      - id: "docker-desktop"
+        label: "Docker Desktop"
+        script: |
+          apt install -y uidmap dbus-user-session
+          wget -O /tmp/docker-desktop.deb https://desktop.docker.com/linux/main/amd64/docker-desktop-amd64.deb
+          apt install -y /tmp/docker-desktop.deb || true
+          rm -f /tmp/docker-desktop.deb || true
+
+      - id: "portainer"
+        label: "Portainer (Docker UI)"
+        script: |
+          docker volume create portainer_data || true
+          docker run -d -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest || true
+
+  - name: "Languages & Runtimes"
+    description: "Install common programming languages."
+    options:
+      - id: "node"
+        label: "Node.js LTS + npm"
+        script: |
+          # Clean up any existing NodeSource repository configurations
+          rm -f /etc/apt/sources.list.d/nodesource.list
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+          apt install -y nodejs
+
+      - id: "python"
+        label: "Python 3 + pip + venv"
+        script: |
+          apt install -y python3 python3-pip python3-venv
+
+      - id: "rust"
+        label: "Rust (via rustup)"
+        script: |
+          if [ -n "$SUDO_USER" ]; then
+            su - $SUDO_USER -c 'curl https://sh.rustup.rs -sSf | sh -s -- -y' || true
+          fi
+
+      - id: "go"
+        label: "Go (golang)"
+        script: |
+          apt install -y golang
+
+      - id: "php"
+        label: "PHP + Composer"
+        script: |
+          apt install -y php php-cli php-common php-curl php-xml php-zip php-mbstring php-mysql
+          php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" || true
+          php composer-setup.php --install-dir=/usr/local/bin --filename=composer || true
+          rm -f composer-setup.php || true
+
+      - id: "java"
+        label: "Java (OpenJDK 17)"
+        script: |
+          apt install -y openjdk-17-jdk
+
+  - name: "Python Tooling"
+    description: "Advanced tools for Python development."
+    options:
+      - id: "pyenv"
+        label: "pyenv (Python Version Manager)"
+        script: |
+          apt install -y make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev git
+          if [ ! -d /opt/pyenv ]; then
+            git clone https://github.com/pyenv/pyenv.git /opt/pyenv
+          fi
+          cat > /etc/profile.d/pyenv.sh <<'EOF'
+          export PYENV_ROOT=/opt/pyenv
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          EOF
+          chmod 644 /etc/profile.d/pyenv.sh
+
+      - id: "poetry"
+        label: "Poetry (Dependency Manager)"
+        script: |
+          if [ -n "$SUDO_USER" ]; then
+            su - $SUDO_USER -c 'curl -sSL https://install.python-poetry.org | python3 -' || true
+            USER_HOME=$(eval echo ~$SUDO_USER)
+            if [ -f "$USER_HOME/.local/bin/poetry" ]; then
+              ln -sf "$USER_HOME/.local/bin/poetry" /usr/local/bin/poetry
+            fi
+          fi
+
+      - id: "pipx"
+        label: "pipx (Install Python Apps)"
+        script: |
+          apt install -y pipx
+          if [ -n "$SUDO_USER" ]; then
+            su - $SUDO_USER -c 'pipx ensurepath' || true
+          fi
+
+      - id: "uv"
+        label: "uv (Fast Python Packaging)"
+        script: |
+          # Install pipx first if not present
+          apt install -y pipx
+          if [ -n "$SUDO_USER" ]; then
+            # Install uv via pipx for the user
+            su - $SUDO_USER -c 'pipx install uv' || true
+            USER_HOME=$(eval echo ~$SUDO_USER)
+            # pipx puts binaries in ~/.local/bin which should be in PATH
+            # Also create a system-wide symlink
+            if [ -f "$USER_HOME/.local/bin/uv" ]; then
+              ln -sf "$USER_HOME/.local/bin/uv" /usr/local/bin/uv || true
+            fi
+            echo "uv installed via pipx. Run 'pipx ensurepath' if needed."
+          else
+            echo "Installing uv system-wide (requires pipx)"
+            pipx install uv --global || true
+          fi
+
+      - id: "ruff"
+        label: "Ruff (Fast Linter/Formatter)"
+        script: |
+          # Install pipx first if not present
+          apt install -y pipx
+          if [ -n "$SUDO_USER" ]; then
+            # Install ruff via pipx for the user
+            su - $SUDO_USER -c 'pipx install ruff' || true
+            USER_HOME=$(eval echo ~$SUDO_USER)
+            # Create system-wide symlink
+            if [ -f "$USER_HOME/.local/bin/ruff" ]; then
+              ln -sf "$USER_HOME/.local/bin/ruff" /usr/local/bin/ruff || true
+            fi
+            echo "ruff installed via pipx. Run 'pipx ensurepath' if needed."
+          else
+            echo "Installing ruff system-wide (requires pipx)"
+            pipx install ruff --global || true
+          fi
+
+  - name: "Databases (Servers)"
+    description: "Install and enable database servers."
+    options:
+      - id: "postgres"
+        label: "PostgreSQL Server"
+        script: |
+          apt install -y postgresql postgresql-contrib
+          systemctl enable postgresql || true
+
+      - id: "mysql"
+        label: "MySQL Server"
+        script: |
+          DEBIAN_FRONTEND=noninteractive apt install -y mysql-server
+          systemctl enable mysql || true
+
+      - id: "mariadb"
+        label: "MariaDB Server"
+        script: |
+          DEBIAN_FRONTEND=noninteractive apt install -y mariadb-server
+          systemctl enable mariadb || true
+
+      - id: "mongodb"
+        label: "MongoDB (Community Edition)"
+        script: |
+          # Clean up any existing MongoDB repository configurations
+          rm -f /etc/apt/sources.list.d/mongodb-org-*.list
+          rm -f /usr/share/keyrings/mongodb-server-*.gpg
+          curl -fsSL https://pgp.mongodb.com/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+          echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME)/mongodb-org/7.0 multiverse" > /etc/apt/sources.list.d/mongodb-org-7.0.list
+          apt update && apt install -y mongodb-org
+          systemctl enable mongod || true
+
+      - id: "redis"
+        label: "Redis Server"
+        script: |
+          apt install -y redis-server
+          systemctl enable redis-server || true
+
+  - name: "Database GUIs"
+    description: "Graphical tools for managing database instances."
+    options:
+      - id: "dbeaver"
+        label: "DBeaver CE"
+        script: |
+          wget -O /tmp/dbeaver.deb https://dbeaver.io/files/dbeaver-ce_latest_amd64.deb
+          apt install -y /tmp/dbeaver.deb || true
+          rm -f /tmp/dbeaver.deb || true
+
+      - id: "pgadmin"
+        label: "pgAdmin 4"
+        script: |
+          # Clean up any existing pgAdmin repository configurations
+          rm -f /etc/apt/sources.list.d/pgadmin4.list
+          rm -f /usr/share/keyrings/pgadmin.gpg
+          curl -fsS https://www.pgadmin.org/static/packages_pgadmin_org.pub | gpg --dearmor -o /usr/share/keyrings/pgadmin.gpg
+          sh -c 'echo "deb [signed-by=/usr/share/keyrings/pgadmin.gpg] https://ftp.postgresql.org/pub/pgadmin/pgadmin4/apt/$(. /etc/os-release && echo $UBUNTU_CODENAME) pgadmin4 main" > /etc/apt/sources.list.d/pgadmin4.list && apt update'
+          apt install -y pgadmin4-desktop || true
+
+      - id: "compass"
+        label: "MongoDB Compass"
+        script: |
+          wget -O /tmp/compass.deb https://downloads.mongodb.com/compass/mongodb-compass_amd64.deb
+          apt install -y /tmp/compass.deb || true
+          rm -f /tmp/compass.deb || true
+
+      - id: "redisinsight"
+        label: "RedisInsight"
+        script: |
+          wget -O /tmp/redisinsight.deb https://downloads.redisinsight.redis.com/latest/redisinsight-linux-x86_64.deb
+          apt install -y /tmp/redisinsight.deb || true
+          rm -f /tmp/redisinsight.deb || true
+
+      - id: "beekeeper"
+        label: "Beekeeper Studio"
+        script: |
+          apt install -y libfuse2 || true
+          wget -O /opt/beekeeper-studio.AppImage https://github.com/beekeeper-studio/beekeeper-studio/releases/latest/download/Beekeeper-Studio-Installer.AppImage || true
+          chmod +x /opt/beekeeper-studio.AppImage || true
+
+      - id: "mysqlworkbench"
+        label: "MySQL Workbench (unofficial/deprecated)"
+        script: |
+          echo "Installing MySQL Workbench (Note: Not officially supported on newer Ubuntu versions)"
+          apt install -y libproj-dev libgdal-dev libmysqlclient21 || true
+          wget -O /tmp/mysql-workbench.deb https://dev.mysql.com/get/Downloads/MySQLGUITools/mysql-workbench-community_8.0.38-1ubuntu22.04_amd64.deb
+          apt install -y /tmp/mysql-workbench.deb || true
+          rm -f /tmp/mysql-workbench.deb || true
+
+  - name: "Shell & Utilities"
+    description: "Shell enhancements and common CLI tools."
+    options:
+      - id: "zsh"
+        label: "Zsh Shell"
+        script: |
+          apt install -y zsh
+          if [ -n "$SUDO_USER" ]; then
+            chsh -s /usr/bin/zsh $SUDO_USER || true
+          fi
+
+      - id: "ohmyzsh"
+        label: "Oh My Zsh (Requires Zsh)"
+        script: |
+          if [ -n "$SUDO_USER" ] && command -v zsh >/dev/null 2>&1; then
+            su - $SUDO_USER -c 'RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"' || true
+          else
+            echo "zsh not installed or no user specified; skipping oh-my-zsh"
+          fi
+
+      - id: "ohmybash"
+        label: "Oh My Bash (Requires Bash)"
+        script: |
+          echo "To install oh-my-bash for a user, run: bash -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)\""
+
+      - id: "utilities"
+        label: "Common CLI Utils (htop, jq, moreutils)"
+        script: |
+          apt install -y ca-certificates curl wget htop jq unzip zip
+
+      - id: "fonts"
+        label: "Nerd Fonts (Fira Code, Meslo)"
+        script: |
+          apt install -y fonts-firacode fonts-roboto fonts-noto fonts-liberation fonts-powerline
+
+      - id: "httpie"
+        label: "HTTPie (CLI HTTP Client)"
+        script: |
+          apt install -y httpie || true
+
+  - name: "Terminals"
+    description: "Alternative terminal emulators."
+    options:
+      - id: "tilix"
+        label: "Tilix"
+        script: |
+          apt install -y tilix || true
+
+      - id: "kitty"
+        label: "Kitty"
+        script: |
+          apt install -y kitty || true
+
+      - id: "alacritty"
+        label: "Alacritty"
+        script: |
+          apt install -y alacritty || true
+
+  - name: "Web Browsers"
+    description: "Install alternative web browsers."
+    options:
+      - id: "chrome"
+        label: "Google Chrome (Stable)"
+        script: |
+          # Clean up any existing Chrome repository configurations
+          rm -f /etc/apt/sources.list.d/google-chrome.list
+          rm -f /usr/share/keyrings/google-chrome.gpg
+          wget -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          apt install -y /tmp/chrome.deb || true
+          rm -f /tmp/chrome.deb || true
+
+      - id: "firefox"
+        label: "Firefox (apt package, no snap)"
+        script: |
+          # Remove snap Firefox if present
+          snap remove firefox 2>/dev/null || true
+          
+          # Block snap Firefox
+          cat > /etc/apt/preferences.d/firefox-no-snap <<'EOF'
+          Package: firefox*
+          Pin: release o=Ubuntu*
+          Pin-Priority: 1001
+          EOF
+          
+          # Add Mozilla Team PPA for latest Firefox
+          wget -qO- "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x0AB215679C571D1C8325275B9BDB3D89CE49EC21" | gpg --dearmor > /usr/share/keyrings/mozillateam-ppa.gpg
+          echo "deb [signed-by=/usr/share/keyrings/mozillateam-ppa.gpg] https://ppa.launchpadcontent.net/mozillateam/ppa/ubuntu noble main" > /etc/apt/sources.list.d/mozillateam-ppa.list
+          
+          # Set preferences to prefer PPA
+          cat > /etc/apt/preferences.d/mozilla-firefox <<'EOF'
+          Package: firefox*
+          Pin: release o=LP-PPA-mozillateam
+          Pin-Priority: 1001
+          EOF
+          
+          # Install
+          apt update
+          apt install -y firefox
+
+      - id: "chromium"
+        label: "Chromium Browser"
+        script: |
+          apt install -y chromium-browser || true
+
+      - id: "brave"
+        label: "Brave Browser"
+        script: |
+          # Clean up any existing Brave repository configurations
+          rm -f /etc/apt/sources.list.d/brave-browser-release.list
+          rm -f /usr/share/keyrings/brave-browser-archive-keyring.gpg
+          curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" > /etc/apt/sources.list.d/brave-browser-release.list
+          apt update && apt install -y brave-browser
+
+  - name: "VPNs (client/server)"
+    description: "Network tunneling and privacy tools."
+    options:
+      - id: "wireguard"
+        label: "WireGuard (client/server)"
+        script: |
+          apt install -y wireguard wireguard-tools || true
+
+      - id: "openvpn"
+        label: "OpenVPN (client/server)"
+        script: |
+          apt install -y openvpn || true
+
+      - id: "tailscale"
+        label: "Tailscale (mesh VPN)"
+        script: |
+          # Clean up any existing Tailscale repository configurations
+          rm -f /etc/apt/sources.list.d/tailscale.list
+          rm -f /usr/share/keyrings/tailscale-archive-keyring.gpg
+          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/$(. /etc/os-release && echo $VERSION_CODENAME).noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+          curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/$(. /etc/os-release && echo $VERSION_CODENAME).tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list >/dev/null
+          apt update
+          apt install -y tailscale || true
+
+      - id: "strongswan"
+        label: "strongSwan (IPsec)"
+        script: |
+          apt install -y strongswan || true
+
+      - id: "nm-vpn"
+        label: "NetworkManager VPN plugins (OpenVPN/IPsec)"
+        script: |
+          apt install -y network-manager-openvpn network-manager-openvpn-gnome network-manager-strongswan || true
