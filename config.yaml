@@ -17,6 +17,16 @@ categories:
           echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
           apt update && apt install -y code
 
+      - id: "antigravity"
+        label: "Antigravity IDE"
+        script: |
+          # Add Google Antigravity repository and install
+          mkdir -p /etc/apt/keyrings
+          curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/antigravity-repo-key.gpg --yes
+          echo "deb [signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev/ antigravity-main main" | sudo tee /etc/apt/sources.list.d/antigravity.list
+          apt update
+          apt install -y anti-gravity || true
+
       - id: "cursor"
         label: "Cursor Editor"
         script: |
@@ -171,6 +181,8 @@ categories:
       - id: "php"
         label: "PHP + Composer"
         script: |
+          add-apt-repository ppa:ondrej/php -y 
+          apt update 
           apt install -y php php-cli php-common php-curl php-xml php-zip php-mbstring php-mysql
           php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" || true
           php composer-setup.php --install-dir=/usr/local/bin --filename=composer || true
@@ -212,7 +224,7 @@ categories:
       - id: "pipx"
         label: "pipx (Install Python Apps)"
         script: |
-          apt install -y pipx
+          apt install -y python3-pip python3-venv pipx
           if [ -n "$SUDO_USER" ]; then
             su - $SUDO_USER -c 'pipx ensurepath' || true
           fi
