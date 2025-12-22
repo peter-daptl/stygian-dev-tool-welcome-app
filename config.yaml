@@ -222,14 +222,6 @@ categories:
             fi
           fi
 
-      - id: "pipx"
-        label: "pipx (Install Python Apps)"
-        script: |
-          apt install -y python3-platformdirs python3-pip python3-venv pipx
-          if [ -n "$SUDO_USER" ]; then
-            su - $SUDO_USER -c 'pipx ensurepath' || true
-          fi
-
       - id: "uv"
         label: "uv (Fast Python Packaging)"
         script: |
